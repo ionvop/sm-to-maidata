@@ -8,10 +8,34 @@ directory = objFile.GetParentFolderName(wscript.ScriptFullName)
 sub Main()
     'Debug()
 
-    dim i, j, element, data, path, test, chartType, difficulty, level, pointer, levelData, bpms, maidata
+    dim i, j, element, data, path, test, chartType, difficulty, level, pointer, levelData, bpms, maidata, outputPath
+    outputPath = directory & "\output.txt"
+    path = ""
     'path = directory & "\test\Silly Love.sm"
-    path = directory & "\test2\Idola.sm"
+    'path = directory & "\test2\Idola.sm"
     'path = directory & "\test3\666.sm"
+    'path = directory & "\DEAD BEATS.sm"
+    path = directory & "\I.sm"
+
+    select case wscript.Arguments.length
+        case 0
+            if path = "" then
+                path = inputbox("Enter path of simfile (.sm)")
+            end if
+
+            if path = "" then
+                wscript.Quit()
+            end if
+        case 1
+            path = wscript.Arguments(0)
+        case 2
+            path = wscript.Arguments(0)
+            outputPath = wscript.Arguments(1)
+        case else
+            wscript.Echo("Invalid arguments")
+            wscript.Quit()
+    end select
+
     data = objFile.OpenTextFile(path).ReadAll()
     data = Strip(data)
     pointer = 0
@@ -195,9 +219,18 @@ sub Main()
         levelData(i) = Strip(levelData(i))
     next
 
-    maidata = ConvertSimfileToMaidata(levelData, bpms)
-    wscript.Echo("Successfully exported to " & path)
-    objFile.CreateTextFile(directory & "\output.txt", true).Write(maidata)
+    select case split(levelData(0), vbcrlf)(0)
+        case "00000"
+            maidata = ConvertSimfileToMaidata(levelData, bpms)
+        case "0000000000"
+            maidata = ConvertSimfileToMaidataDouble(levelData, bpms)
+        case else
+            wscript.Echo("Something went wrong")
+            wscript.Quit()
+    end select
+    
+    wscript.Echo("Successfully exported to " & outputPath)
+    objFile.CreateTextFile(outputPath, true).Write(maidata)
 end sub
 
 function ConvertSimfileToMaidata(levelData, bpms)
@@ -316,7 +349,7 @@ function ConvertSimfileToMaidata(levelData, bpms)
                 case 3
                     tempMaidata = ""
 
-                    if mid(measureData(j), 3, 1) = "1" then
+                    if mid(measureData(j), 3, 1) = "1" or mid(measureData(j), 3, 1) = "2" then
                         if mid(measureData(j), 1, 1) = "1" then
                             tempMaidata = tempMaidata & "/5" & vbcrlf
                             lastPosition = "dl"
@@ -458,6 +491,18 @@ function ConvertSimfileToMaidata(levelData, bpms)
                         lastPosition = "ul"
                     end if
                     
+                    if mid(measureData(j), 4, 1) = "2" then
+                        length = CalcSlider(levelData, position, 4)
+                        tempMaidata = tempMaidata & "/2h[" & length(1) & ":" & length(0) & "]" & vbcrlf
+                        lastPosition = "ur"
+                    end if
+                    
+                    if mid(measureData(j), 5, 1) = "2" then
+                        length = CalcSlider(levelData, position, 5)
+                        tempMaidata = tempMaidata & "/3h[" & length(1) & ":" & length(0) & "]" & vbcrlf
+                        lastPosition = "dr"
+                    end if
+
                     if mid(measureData(j), 3, 1) = "2" then
                         select case lastPosition
                             case "ul"
@@ -473,18 +518,6 @@ function ConvertSimfileToMaidata(levelData, bpms)
                                 length = CalcSlider(levelData, position, 3)
                                 tempMaidata = tempMaidata & "/5h[" & length(1) & ":" & length(0) & "]" & vbcrlf
                         end select
-                    end if
-                    
-                    if mid(measureData(j), 4, 1) = "2" then
-                        length = CalcSlider(levelData, position, 4)
-                        tempMaidata = tempMaidata & "/2h[" & length(1) & ":" & length(0) & "]" & vbcrlf
-                        lastPosition = "ur"
-                    end if
-                    
-                    if mid(measureData(j), 5, 1) = "2" then
-                        length = CalcSlider(levelData, position, 5)
-                        tempMaidata = tempMaidata & "/3h[" & length(1) & ":" & length(0) & "]" & vbcrlf
-                        lastPosition = "dr"
                     end if
 
                     tempMaidata = mid(tempMaidata, 2)
@@ -507,6 +540,221 @@ function ConvertSimfileToMaidata(levelData, bpms)
     next
 
     ConvertSimfileToMaidata = FormatMaidata(maidata)
+end function
+
+function ConvertSimfileToMaidataDouble(levelData, bpms)
+    dim i, j, element, measures, currentBpm, bpmsPointer, maidata, position, lastPosition, currentBeat, currentMeasure, measureData, tempMaidata, length
+
+    measures = array()
+
+    for each element in levelData
+        measures = PushArray(measures, ubound(split(element, vbcrlf)) + 1)
+    next
+
+    currentBpm = split(bpms(0), "=")(1)
+    currentBpm = eval(currentBpm)
+    bpmsPointer = 1
+
+    if bpmsPointer <= ubound(bpms) then
+        bpmItem = split(bpms(bpmsPointer), "=")
+    end if
+
+    maidata = "(" & currentBpm & ")" & vbcrlf
+    currentMeasure = 0
+    lastPosition = "ul"
+    position = -1
+    currentBeat = 0
+
+    for i = 0 to ubound(levelData)
+        measureData = split(levelData(i), vbcrlf)
+        wscript.Echo("Progress: " & i & " / " & ubound(levelData))
+
+        if currentMeasure = measures(i) then
+        else
+            currentMeasure = measures(i)
+            maidata = maidata & "{" & currentMeasure & "}" & vbcrlf
+        end if
+
+        for j = 0 to ubound(measureData)
+            measureData(j) = Strip(measureData(j))
+            position = position + 1
+
+            tempMaidata = ""
+
+            if mid(measureData(j), 1, 1) = "1" then
+                tempMaidata = tempMaidata & "/6" & vbcrlf
+                lastPosition = "dl"
+            end if
+            
+            if mid(measureData(j), 2, 1) = "1" then
+                tempMaidata = tempMaidata & "/7" & vbcrlf
+                lastPosition = "ul"
+            end if
+            
+            if mid(measureData(j), 4, 1) = "1" then
+                tempMaidata = tempMaidata & "/8" & vbcrlf
+                lastPosition = "ur"
+            end if
+            
+            if mid(measureData(j), 5, 1) = "1" then
+                tempMaidata = tempMaidata & "/5" & vbcrlf
+                lastPosition = "dr"
+            end if
+
+            if mid(measureData(j), 3, 1) = "1" then
+                if mid(measureData(j), 8, 1) = "1" then
+                    tempMaidata = tempMaidata & "/C" & vbcrlf
+                else
+                    select case lastPosition
+                        case "ul"
+                            tempMaidata = tempMaidata & "/B5" & vbcrlf
+                        case "ur"
+                            tempMaidata = tempMaidata & "/B6" & vbcrlf
+                        case "dl"
+                            tempMaidata = tempMaidata & "/B8" & vbcrlf
+                        case "dr"
+                            tempMaidata = tempMaidata & "/B7" & vbcrlf
+                    end select
+                end if
+            end if
+
+            if mid(measureData(j), 6, 1) = "1" then
+                tempMaidata = tempMaidata & "/4" & vbcrlf
+                lastPosition = "dl"
+            end if
+            
+            if mid(measureData(j), 7, 1) = "1" then
+                tempMaidata = tempMaidata & "/1" & vbcrlf
+                lastPosition = "ul"
+            end if
+            
+            if mid(measureData(j), 9, 1) = "1" then
+                tempMaidata = tempMaidata & "/2" & vbcrlf
+                lastPosition = "ur"
+            end if
+            
+            if mid(measureData(j), 10, 1) = "1" then
+                tempMaidata = tempMaidata & "/3" & vbcrlf
+                lastPosition = "dr"
+            end if
+
+            if mid(measureData(j), 8, 1) = "1" then
+                if mid(measureData(j), 3, 1) = "1" then
+                else
+                    select case lastPosition
+                        case "ul"
+                            tempMaidata = tempMaidata & "/B3" & vbcrlf
+                        case "ur"
+                            tempMaidata = tempMaidata & "/B4" & vbcrlf
+                        case "dl"
+                            tempMaidata = tempMaidata & "/B2" & vbcrlf
+                        case "dr"
+                            tempMaidata = tempMaidata & "/B1" & vbcrlf
+                    end select
+                end if
+            end if
+
+            if mid(measureData(j), 1, 1) = "2" then
+                length = CalcSlider(levelData, position, 1)
+                tempMaidata = tempMaidata & "/6h[" & length(1) & ":" & length(0) & "]" & vbcrlf
+                lastPosition = "dl"
+            end if
+            
+            if mid(measureData(j), 2, 1) = "2" then
+                length = CalcSlider(levelData, position, 2)
+                tempMaidata = tempMaidata & "/7h[" & length(1) & ":" & length(0) & "]" & vbcrlf
+                lastPosition = "ul"
+            end if
+            
+            if mid(measureData(j), 4, 1) = "2" then
+                length = CalcSlider(levelData, position, 4)
+                tempMaidata = tempMaidata & "/8h[" & length(1) & ":" & length(0) & "]" & vbcrlf
+                lastPosition = "ur"
+            end if
+            
+            if mid(measureData(j), 5, 1) = "2" then
+                length = CalcSlider(levelData, position, 5)
+                tempMaidata = tempMaidata & "/5h[" & length(1) & ":" & length(0) & "]" & vbcrlf
+                lastPosition = "dr"
+            end if
+
+            if mid(measureData(j), 3, 1) = "2" then
+                if mid(measureData(j), 8, 1) = "2" then
+                    tempMaidata = tempMaidata & "/C" & vbcrlf
+                else
+                    select case lastPosition
+                        case "ul"
+                            tempMaidata = tempMaidata & "/B5" & vbcrlf
+                        case "ur"
+                            tempMaidata = tempMaidata & "/B6" & vbcrlf
+                        case "dl"
+                            tempMaidata = tempMaidata & "/B8" & vbcrlf
+                        case "dr"
+                            tempMaidata = tempMaidata & "/B7" & vbcrlf
+                    end select
+                end if
+            end if
+
+            if mid(measureData(j), 6, 1) = "2" then
+                length = CalcSlider(levelData, position, 6)
+                tempMaidata = tempMaidata & "/6h[" & length(1) & ":" & length(0) & "]" & vbcrlf
+                lastPosition = "dl"
+            end if
+            
+            if mid(measureData(j), 7, 1) = "2" then
+                length = CalcSlider(levelData, position, 7)
+                tempMaidata = tempMaidata & "/7h[" & length(1) & ":" & length(0) & "]" & vbcrlf
+                lastPosition = "ul"
+            end if
+            
+            if mid(measureData(j), 9, 1) = "2" then
+                length = CalcSlider(levelData, position, 9)
+                tempMaidata = tempMaidata & "/8h[" & length(1) & ":" & length(0) & "]" & vbcrlf
+                lastPosition = "ur"
+            end if
+            
+            if mid(measureData(j), 10, 1) = "2" then
+                length = CalcSlider(levelData, position, 10)
+                tempMaidata = tempMaidata & "/5h[" & length(1) & ":" & length(0) & "]" & vbcrlf
+                lastPosition = "dr"
+            end if
+
+            if mid(measureData(j), 8, 1) = "2" then
+                if mid(measureData(j), 3, 1) = "2" then
+                    tempMaidata = tempMaidata & "/C" & vbcrlf
+                else
+                    select case lastPosition
+                        case "ul"
+                            tempMaidata = tempMaidata & "/B3" & vbcrlf
+                        case "ur"
+                            tempMaidata = tempMaidata & "/B4" & vbcrlf
+                        case "dl"
+                            tempMaidata = tempMaidata & "/B2" & vbcrlf
+                        case "dr"
+                            tempMaidata = tempMaidata & "/B1" & vbcrlf
+                    end select
+                end if
+            end if
+
+            tempMaidata = mid(tempMaidata, 2)
+            maidata = maidata & tempMaidata & "," & vbcrlf
+
+            currentBeat = currentBeat + (4 / eval(measures(i)))
+
+            if bpmsPointer <= ubound(bpms) then
+                if currentBeat >= eval(bpmItem(0)) - 0.001 then
+                    maidata = maidata & "(" & bpmItem(1) & ")" & vbcrlf
+                    bpmsPointer = bpmsPointer + 1
+
+                    if bpmsPointer <= ubound(bpms) then
+                        bpmItem = split(bpms(bpmsPointer), "=")
+                    end if
+                end if
+            end if
+        next
+    next
+
+    ConvertSimfileToMaidataDouble = FormatMaidata(maidata)
 end function
 
 function CalcSlider(byval levelData, position, step)
